@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -22,6 +23,7 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
@@ -264,13 +266,24 @@ class MainActivity : Activity() {
                             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                             try {
                                 page.render(bitmap, Rect(0, 0, width, height), null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                                val info = PdfDocument.PageInfo.Builder(page.width, page.height, index + 1).create()
-                                val outputPage = outputPdf.startPage(info)
-                                val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                                outputPage.canvas.drawBitmap(bitmap, null, RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), paint)
-                                outputPdf.finishPage(outputPage)
+                                val jpegBytes = ByteArrayOutputStream().use { buffer ->
+                                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, buffer)
+                                    buffer.toByteArray()
+                                }
+                                val compressedBitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+                                    ?: error("Could not encode PDF page")
+                                try {
+                                    val info = PdfDocument.PageInfo.Builder(page.width, page.height, index + 1).create()
+                                    val outputPage = outputPdf.startPage(info)
+                                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                                    outputPage.canvas.drawBitmap(compressedBitmap, null, RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), paint)
+                                    outputPdf.finishPage(outputPage)
+                                } finally {
+                                    compressedBitmap.recycle()
+                                    bitmap.recycle()
+                                }
                             } finally {
-                                bitmap.recycle()
+                                if (!bitmap.isRecycled) bitmap.recycle()
                             }
                         } finally {
                             page.close()
