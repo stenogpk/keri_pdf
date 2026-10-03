@@ -235,7 +235,21 @@ class MainActivity : Activity() {
             0 -> listOf(150 to 82)
             1 -> listOf(120 to 74)
             2 -> listOf(85 to 58)
-            else -> listOf(160 to 84, 130 to 76, 105 to 68, 85 to 58, 68 to 48, 52 to 38)
+            // Exact Target mode tries progressively smaller outputs. The last steps are aggressive;
+            // users should inspect fine text and diagrams before relying on the result.
+            else -> listOf(
+                160 to 84,
+                130 to 76,
+                105 to 68,
+                85 to 58,
+                68 to 48,
+                52 to 38,
+                44 to 35,
+                38 to 30,
+                32 to 25,
+                28 to 22,
+                24 to 18
+            )
         }
         var best: File? = null
         for ((dpi, quality) in presets) {
