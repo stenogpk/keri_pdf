@@ -1,4 +1,4 @@
-name: Android APK Build
+name: Keri PDF Final APK Build
 
 on:
   push:
@@ -22,11 +22,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon clean testDebugUnitTest assembleDebug
+      - name: Generate APK checksum
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: keri-pdf-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Keri-PDF-v1.1.0-APK
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
           retention-days: 14
