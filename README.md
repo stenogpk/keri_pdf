@@ -1,20 +1,22 @@
 # Keri PDF
 
-Keri PDF is an offline-first Android PDF compression app.
+Keri PDF is an offline-first Android PDF optimizer. Files are processed locally on the device.
 
-## Initial implementation scope
-- Pick a PDF using Android Storage Access Framework.
-- Compress scanned/image-heavy PDFs locally on the device.
-- Light, Recommended and Strong presets.
-- Target-size mode attempts a requested output size and reports the actual result if it cannot be reached.
-- Save the compressed PDF to a user-selected location.
+## Version 1.1.0 approach
+- Uses PDFBox-Android to load and rewrite the PDF rather than rasterizing every page.
+- Preserves the existing PDF page content, selectable/searchable text, vector graphics and page geometry as far as supported by the PDF library.
+- Saves a new copy through Android's document picker; the source file is not overwritten.
+- Offers a quality-preserving mode and an exact-target check. The exact-target option reports whether the rewritten file meets the requested size; it does not degrade page quality to force a number.
+- Offers an **Open compressed PDF** action after saving.
 - No account, upload server or cloud processing.
 
-## Important PDF fidelity note
-The first raster-compression engine renders pages to images and rebuilds the PDF. This is useful for scanned PDFs, but rasterizes text and vector artwork: text may no longer be selectable/searchable and fine details may be reduced. The app must disclose this before processing. A separate content-preserving optimizer must not be represented as available until implemented and tested.
+## Important limitation
+A structure-preserving rewrite cannot guarantee a smaller file for every PDF. PDFs that are already optimized or contain large embedded scans may remain close to their original size. A very small target (for example 200 KB) may be impossible without lossy image recompression. Keri PDF intentionally does not rasterize all pages or blur text to claim that target was reached.
 
-## Build
-The GitHub Actions workflow builds an installable Android debug APK and uploads it as an artifact. Open **Actions → Android APK Build → latest successful run → Artifacts** to download it.
+This version has been build-validated through GitHub Actions. Real-device testing with varied PDFs (text PDFs, Hindi notes, scanned documents, image-heavy PDFs, forms and password-protected PDFs) is still required before calling it fully production-verified.
 
-## Development status
-Project scaffold in progress. Do not treat an APK as release-ready until the workflow succeeds and device-level PDF quality tests have been completed.
+## Build and install
+Open **Actions → Keri PDF Final APK Build → latest successful run → Artifacts** and download `Keri-PDF-v1.1.0-APK`. Extract the ZIP and install `app-debug.apk` on Android. The workflow also publishes a SHA-256 checksum file.
+
+## Library
+Uses [PdfBox-Android](https://github.com/TomRoush/PdfBox-Android), Apache License 2.0.
