@@ -33,7 +33,7 @@ class MainActivity : Activity() {
     private var lastSavedPdf: Uri? = null
     private lateinit var targetSize: EditText
     private lateinit var modeGroup: RadioGroup
-    private var pendingMode = 1
+    private var pendingMode = 0
     private var pendingTargetKb: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,12 +84,12 @@ class MainActivity : Activity() {
 
         content.addView(sectionTitle("Compression mode"))
         modeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        listOf("Light", "Recommended", "Strong", "Exact target size (KB)").forEachIndexed { index, label ->
+        listOf("Quality-preserving (recommended)", "Check exact target size (KB)").forEachIndexed { index, label ->
             modeGroup.addView(RadioButton(this).apply {
                 id = View.generateViewId()
                 text = label
                 textSize = 15f
-                isChecked = index == 1
+                isChecked = index == 0
                 tag = index
             })
         }
@@ -102,7 +102,7 @@ class MainActivity : Activity() {
         content.addView(targetSize)
 
         content.addView(TextView(this).apply {
-            text = "Important: this first version converts each PDF page into an image. Text may no longer be selectable/searchable, and fine details can soften. Keep your original PDF."
+            text = "Quality-first processing keeps the original PDF page content, text and vector graphics instead of converting pages into blurry images. Exact target mode checks whether the target is reached without sacrificing quality; not every PDF can be reduced to the requested size."
             textSize = 13f
             setTextColor(0xFF92400E.toInt())
             setBackgroundColor(0xFFFFF7ED.toInt())
@@ -116,7 +116,7 @@ class MainActivity : Activity() {
                 if (selectedPdf == null) return@setOnClickListener
                 pendingMode = selectedMode()
                 pendingTargetKb = targetSize.text.toString().toIntOrNull()
-                if (pendingMode == 3 && (pendingTargetKb ?: 0) <= 0) {
+                if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
                     targetSize.error = "Enter a target size in KB"
                     return@setOnClickListener
                 }
@@ -166,7 +166,7 @@ class MainActivity : Activity() {
 
     private fun selectedMode(): Int {
         val checked = modeGroup.checkedRadioButtonId
-        return modeGroup.findViewById<RadioButton>(checked)?.tag as? Int ?: 1
+        return modeGroup.findViewById<RadioButton>(checked)?.tag as? Int ?: 0
     }
 
     @Deprecated("Deprecated in Android API; retained for broad compatibility")
@@ -243,7 +243,7 @@ class MainActivity : Activity() {
         com.tom_roush.pdfbox.pdmodel.PDDocument.load(source).use { document ->
             document.save(destination)
         }
-        val targetBytes = if (mode == 3) (targetKb ?: 0).toLong() * 1024L else null
+        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else null
         val reached = if (targetBytes == null) null else destination.length() <= targetBytes
         return CompressionResult(destination, destination.length(), reached)
     }
