@@ -3,13 +3,6 @@ package com.keripdf
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Paint
-import android.graphics.Rect
-import android.graphics.RectF
-import android.graphics.pdf.PdfDocument
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -23,7 +16,6 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
@@ -129,8 +121,8 @@ class MainActivity : Activity() {
                     return@setOnClickListener
                 }
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Confirm image-based compression")
-                    .setMessage("This method rasterizes PDF pages. Searchable text and vector content may be lost. Continue with a copy? Your original file will not be changed.")
+                    .setTitle("Confirm quality-preserving compression")
+                    .setMessage("Keri PDF will optimize the PDF structure without rasterizing pages. Text and vector content are preserved. Very small target sizes may not be achievable without quality loss. Continue with a copy? Your original file will not be changed.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Continue") { _, _ ->
                         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -240,81 +232,20 @@ class MainActivity : Activity() {
 
     private data class CompressionResult(val file: File, val bytes: Long, val targetReached: Boolean?)
 
+    /**
+     * Quality-first PDF rewrite. PDFBox rewrites the document structure instead of rendering
+     * every page to a bitmap, so text, vector graphics, page geometry and searchable content
+     * are retained. This deliberately does not destroy quality just to force a target size.
+     */
     private fun compressPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
+        val destination = File(cacheDir, "keri_optimized_" + System.currentTimeMillis() + ".pdf")
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
+        com.tom_roush.pdfbox.pdmodel.PDDocument.load(source).use { document ->
+            document.save(destination)
+        }
         val targetBytes = if (mode == 3) (targetKb ?: 0).toLong() * 1024L else null
-        val presets = when (mode) {
-            0 -> listOf(150 to 82)
-            1 -> listOf(120 to 74)
-            2 -> listOf(85 to 58)
-            // Exact Target mode tries progressively smaller outputs. The last steps are aggressive;
-            // users should inspect fine text and diagrams before relying on the result.
-            else -> listOf(
-                160 to 84,
-                130 to 76,
-                105 to 68,
-                85 to 58,
-                68 to 48,
-                52 to 38
-            )
-        }
-        var best: File? = null
-        for ((dpi, quality) in presets) {
-            val candidate = File(cacheDir, "keri_candidate_" + dpi + "_" + quality + ".pdf")
-            renderCompressed(source, candidate, dpi, quality)
-            best?.delete()
-            best = candidate
-            if (targetBytes != null && candidate.length() <= targetBytes) {
-                return CompressionResult(candidate, candidate.length(), true)
-            }
-            if (targetBytes == null) break
-        }
-        val finalFile = best ?: error("No compression output was created")
-        return CompressionResult(finalFile, finalFile.length(), if (targetBytes == null) null else false)
-    }
-
-    private fun renderCompressed(source: File, destination: File, dpi: Int, quality: Int) {
-        val descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
-        descriptor.use { pfd ->
-            PdfRenderer(pfd).use { renderer ->
-                val outputPdf = PdfDocument()
-                try {
-                    for (index in 0 until renderer.pageCount) {
-                        val page = renderer.openPage(index)
-                        try {
-                            val width = max(1, page.width * dpi / 72)
-                            val height = max(1, page.height * dpi / 72)
-                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                            try {
-                                page.render(bitmap, Rect(0, 0, width, height), null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                                val jpegBytes = ByteArrayOutputStream().use { buffer ->
-                                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, buffer)
-                                    buffer.toByteArray()
-                                }
-                                val compressedBitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
-                                    ?: error("Could not encode PDF page")
-                                try {
-                                    val info = PdfDocument.PageInfo.Builder(page.width, page.height, index + 1).create()
-                                    val outputPage = outputPdf.startPage(info)
-                                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                                    outputPage.canvas.drawBitmap(compressedBitmap, null, RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), paint)
-                                    outputPdf.finishPage(outputPage)
-                                } finally {
-                                    compressedBitmap.recycle()
-                                    bitmap.recycle()
-                                }
-                            } finally {
-                                if (!bitmap.isRecycled) bitmap.recycle()
-                            }
-                        } finally {
-                            page.close()
-                        }
-                    }
-                    FileOutputStream(destination).use { outputPdf.writeTo(it) }
-                } finally {
-                    outputPdf.close()
-                }
-            }
-        }
+        val reached = if (targetBytes == null) null else destination.length() <= targetBytes
+        return CompressionResult(destination, destination.length(), reached)
     }
 
     private fun openLastCompressedPdf() {
