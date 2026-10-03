@@ -37,6 +37,8 @@ class MainActivity : Activity() {
     private lateinit var statusLabel: TextView
     private lateinit var progress: ProgressBar
     private lateinit var compressButton: Button
+    private lateinit var openButton: Button
+    private var lastSavedPdf: Uri? = null
     private lateinit var targetSize: EditText
     private lateinit var modeGroup: RadioGroup
     private var pendingMode = 1
@@ -151,6 +153,12 @@ class MainActivity : Activity() {
             setPadding(0, 12, 0, 0)
         }
         content.addView(statusLabel)
+        openButton = Button(this).apply {
+            text = "Open compressed PDF"
+            visibility = View.GONE
+            setOnClickListener { openLastCompressedPdf() }
+        }
+        content.addView(openButton)
 
         page.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(page)
@@ -203,11 +211,13 @@ class MainActivity : Activity() {
                     result.file.inputStream().use { input -> input.copyTo(output) }
                 } ?: error("Could not save the compressed PDF")
 
+                lastSavedPdf = outputUri
                 source.delete()
                 result.file.delete()
                 runOnUiThread {
                     progress.visibility = View.GONE
                     compressButton.isEnabled = true
+                    openButton.visibility = View.VISIBLE
                     val saved = max(0L, sourceBytes - result.bytes)
                     val percent = if (sourceBytes > 0) saved * 100.0 / sourceBytes else 0.0
                     var message = "Original: " + formatBytes(sourceBytes) +
@@ -221,6 +231,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     progress.visibility = View.GONE
                     compressButton.isEnabled = true
+                    openButton.visibility = View.GONE
                     statusLabel.text = "Compression failed: " + (error.localizedMessage ?: "Unknown error")
                 }
             }
@@ -243,12 +254,7 @@ class MainActivity : Activity() {
                 105 to 68,
                 85 to 58,
                 68 to 48,
-                52 to 38,
-                44 to 35,
-                38 to 30,
-                32 to 25,
-                28 to 22,
-                24 to 18
+                52 to 38
             )
         }
         var best: File? = null
@@ -308,6 +314,22 @@ class MainActivity : Activity() {
                     outputPdf.close()
                 }
             }
+        }
+    }
+
+    private fun openLastCompressedPdf() {
+        val uri = lastSavedPdf ?: run {
+            Toast.makeText(this, "No compressed PDF available yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/pdf")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Open compressed PDF"))
+        } catch (_: Exception) {
+            Toast.makeText(this, "No PDF viewer app found on this device", Toast.LENGTH_LONG).show()
         }
     }
 
