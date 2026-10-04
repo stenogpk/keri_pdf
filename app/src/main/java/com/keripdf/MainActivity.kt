@@ -145,6 +145,19 @@ class MainActivity : Activity() {
             startActivityForResult(intent, REQUEST_OPEN)
         }
         fileCard.addView(chooseButton, fullWidth())
+
+        bulkSelectButton = actionButton("Choose up to 50 PDFs (Bulk)", 0xFFDCFCE7.toInt(), 0xFF166534.toInt()).apply {
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+                startActivityForResult(intent, REQUEST_BULK_OPEN)
+            }
+        }
+        val bulkSelectParams = fullWidth().apply { topMargin = dp(10) }
+        fileCard.addView(bulkSelectButton, bulkSelectParams)
         fileLabel = TextView(this).apply {
             text = "No PDF selected"
             textSize = 13f
@@ -206,7 +219,7 @@ class MainActivity : Activity() {
         val targetParams = fullWidth().apply { topMargin = dp(10) }
         modeCard.addView(targetSize, targetParams)
         modeCard.addView(TextView(this).apply {
-            text = "The requested KB limit is checked against the final saved PDF. If it cannot be reached at the available quality settings, the app will tell you."
+            text = "The requested KB limit is checked against each final PDF. Bulk mode adds only files that meet the limit to the ZIP."
             textSize = 12f
             setTextColor(0xFF64748B.toInt())
             setLineSpacing(dp(3).toFloat(), 1.0f)
@@ -265,6 +278,34 @@ class MainActivity : Activity() {
             }
         }
         content.addView(compressButton, fullWidth())
+
+        bulkCompressButton = actionButton("Compress selected PDFs to ZIP", 0xFF172554.toInt(), 0xFFFFFFFF.toInt()).apply {
+            isEnabled = false
+            setOnClickListener {
+                if (selectedPdfs.isEmpty()) return@setOnClickListener
+                pendingMode = selectedMode()
+                pendingTargetKb = targetSize.text.toString().toIntOrNull()
+                if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
+                    targetSize.error = "Enter a target size in KB"
+                    return@setOnClickListener
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Bulk compression")
+                    .setMessage("Each PDF will be compressed separately. Only files within the target KB limit will be included in the ZIP.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Create ZIP") { _, _ ->
+                        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "application/zip"
+                            putExtra(Intent.EXTRA_TITLE, "KeRi_Bulk_Compressed.zip")
+                        }
+                        startActivityForResult(intent, REQUEST_BULK_SAVE)
+                    }
+                    .show()
+            }
+        }
+        val bulkCompressParams = fullWidth().apply { topMargin = dp(10) }
+        content.addView(bulkCompressButton, bulkCompressParams)
         progress = ProgressBar(this).apply {
             visibility = View.GONE
             isIndeterminate = true
