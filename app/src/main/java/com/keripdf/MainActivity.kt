@@ -17,6 +17,12 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
@@ -243,7 +249,7 @@ class MainActivity : Activity() {
         for (quality in qualities) {
             val candidate = File(cacheDir, "keri_opt_" + System.currentTimeMillis() + "_" + quality + ".pdf")
             try {
-                com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
+                PDFBoxResourceLoader.init(applicationContext)
                 PDDocument.load(source).use { document ->
                     for (page in document.pages) {
                         page.resources?.let { optimizeResources(document, it, quality, HashSet<Int>()) }
@@ -274,7 +280,7 @@ class MainActivity : Activity() {
 
     private fun optimizeResources(
         document: PDDocument,
-        resources: com.tom_roush.pdfbox.pdmodel.PDResources,
+        resources: PDResources,
         quality: Int,
         visitedForms: MutableSet<Int>
     ) {
