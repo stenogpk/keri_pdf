@@ -54,75 +54,153 @@ class MainActivity : Activity() {
     }
 
     private fun buildScreen() {
+        window.statusBarColor = 0xFFF4F7FB.toInt()
+        window.navigationBarColor = 0xFFF4F7FB.toInt()
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 28, 24, 24)
-            setBackgroundColor(0xFFF7F8FC.toInt())
+            setBackgroundColor(0xFFF4F7FB.toInt())
         }
-        val scroll = ScrollView(this)
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(dp(18), dp(16), dp(18), dp(12))
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
         scroll.addView(content)
 
-        content.addView(TextView(this).apply {
-            text = "Keri PDF"
-            textSize = 30f
-            setTextColor(0xFF172554.toInt())
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(22), dp(22), dp(22))
+            background = rounded(0xFF172554.toInt(), 24)
+        }
+        header.addView(TextView(this).apply {
+            text = "PDF TOOLS  •  OFFLINE"
+            textSize = 11f
+            letterSpacing = 0.12f
+            setTextColor(0xFFB9C8F5.toInt())
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
-        content.addView(TextView(this).apply {
-            text = "Compress PDFs. Keep files on your device."
-            textSize = 15f
-            setTextColor(0xFF475569.toInt())
-            setPadding(0, 4, 0, 24)
+        header.addView(TextView(this).apply {
+            text = "KeRi PDF\nCompressor"
+            textSize = 29f
+            setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setLineSpacing(dp(1).toFloat(), 1.0f)
+            setPadding(0, dp(8), 0, dp(5))
         })
+        header.addView(TextView(this).apply {
+            text = "Compress PDFs. Keep your files on your device."
+            textSize = 14f
+            setTextColor(0xFFDCE5FF.toInt())
+            setLineSpacing(dp(3).toFloat(), 1.0f)
+        })
+        content.addView(header, fullWidth())
+        addGap(content, 18)
 
-        content.addView(Button(this).apply {
-            text = "Choose PDF"
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/pdf"
-                }
-                startActivityForResult(intent, REQUEST_OPEN)
-            }
+        val fileCard = makeCard()
+        fileCard.addView(sectionTitle("SELECT YOUR PDF"))
+        fileCard.addView(TextView(this).apply {
+            text = "Choose a document from your device to get started."
+            textSize = 13f
+            setTextColor(0xFF64748B.toInt())
+            setPadding(0, 0, 0, dp(12))
         })
+        val chooseButton = actionButton("＋   Choose PDF", 0xFFE8EEF9.toInt(), 0xFF1E3A8A.toInt())
+        chooseButton.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/pdf"
+            }
+            startActivityForResult(intent, REQUEST_OPEN)
+        }
+        fileCard.addView(chooseButton, fullWidth())
         fileLabel = TextView(this).apply {
             text = "No PDF selected"
-            textSize = 14f
+            textSize = 13f
             setTextColor(0xFF334155.toInt())
-            setPadding(0, 12, 0, 18)
+            setLineSpacing(dp(2).toFloat(), 1.0f)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            background = rounded(0xFFF1F5F9.toInt(), 12)
         }
-        content.addView(fileLabel)
+        val fileParams = fullWidth().apply { topMargin = dp(12) }
+        fileCard.addView(fileLabel, fileParams)
+        content.addView(fileCard, fullWidth())
+        addGap(content, 14)
 
-        content.addView(sectionTitle("Compression mode"))
-        modeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val modeCard = makeCard()
+        modeCard.addView(sectionTitle("COMPRESSION MODE"))
+        modeGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
         listOf("Quality-preserving (recommended)", "Check exact target size (KB)").forEachIndexed { index, label ->
-            modeGroup.addView(RadioButton(this).apply {
+            val radio = RadioButton(this).apply {
                 id = View.generateViewId()
                 text = label
-                textSize = 15f
+                textSize = 14f
+                minHeight = dp(48)
+                setPadding(dp(4), dp(5), dp(4), dp(5))
+                setTextColor(0xFF1E293B.toInt())
+                buttonTintList = android.content.res.ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(0xFF0D9488.toInt(), 0xFF94A3B8.toInt())
+                )
                 isChecked = index == 0
                 tag = index
-            })
+            }
+            modeGroup.addView(radio, fullWidth())
         }
-        content.addView(modeGroup)
+        modeCard.addView(modeGroup)
         targetSize = EditText(this).apply {
-            hint = "Target size in KB (e.g. 500)"
+            hint = "Target size in KB (e.g. 200)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setSingleLine(true)
+            textSize = 16f
+            setTextColor(0xFF0F172A.toInt())
+            setHintTextColor(0xFF94A3B8.toInt())
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(0xFFF8FAFC.toInt(), 12, 0xFFCBD5E1.toInt())
         }
-        content.addView(targetSize)
-
-        content.addView(TextView(this).apply {
-            text = "Keri PDF optimizes embedded images while keeping page text and vector content intact. Transparent/masked images are left unchanged. Very small target sizes may not be achievable without visible image quality loss."
-            textSize = 13f
-            setTextColor(0xFF92400E.toInt())
-            setBackgroundColor(0xFFFFF7ED.toInt())
-            setPadding(14, 14, 14, 14)
+        val targetParams = fullWidth().apply { topMargin = dp(10) }
+        modeCard.addView(targetSize, targetParams)
+        modeCard.addView(TextView(this).apply {
+            text = "The requested KB limit is checked against the final saved PDF. If it cannot be reached at the available quality settings, the app will tell you."
+            textSize = 12f
+            setTextColor(0xFF64748B.toInt())
+            setLineSpacing(dp(3).toFloat(), 1.0f)
+            setPadding(dp(2), dp(10), dp(2), 0)
         })
+        content.addView(modeCard, fullWidth())
+        addGap(content, 14)
 
-        compressButton = Button(this).apply {
-            text = "Compress PDF"
+        val note = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(15), dp(13), dp(15), dp(13))
+            background = rounded(0xFFFFF7ED.toInt(), 14, 0xFFFED7AA.toInt())
+        }
+        note.addView(TextView(this).apply {
+            text = "QUALITY NOTE"
+            textSize = 11f
+            letterSpacing = 0.08f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(0xFF9A3412.toInt())
+        })
+        note.addView(TextView(this).apply {
+            text = "Very small file sizes can require image quality reduction. Your original PDF is never overwritten."
+            textSize = 12f
+            setTextColor(0xFF9A3412.toInt())
+            setLineSpacing(dp(3).toFloat(), 1.0f)
+            setPadding(0, dp(5), 0, 0)
+        })
+        content.addView(note, fullWidth())
+        addGap(content, 16)
+
+        compressButton = actionButton("Compress PDF", 0xFF0F766E.toInt(), 0xFFFFFFFF.toInt()).apply {
             isEnabled = false
             setOnClickListener {
                 if (selectedPdf == null) return@setOnClickListener
@@ -133,36 +211,66 @@ class MainActivity : Activity() {
                     return@setOnClickListener
                 }
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Confirm quality-preserving compression")
-                    .setMessage("Keri PDF will optimize embedded images, not flatten whole pages. Text and vector content remain in the PDF. Images may become softer at lower target sizes. Continue with a copy? Your original file will not be changed.")
+                    .setTitle("Confirm compression")
+                    .setMessage("Keri PDF will optimize the document and save a separate copy. Your original file will not be changed. Continue?")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Continue") { _, _ ->
                         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
                             type = "application/pdf"
-                            putExtra(Intent.EXTRA_TITLE, "KeriPDF_compressed.pdf")
+                            putExtra(Intent.EXTRA_TITLE, "KeRiPDF_compressed.pdf")
                         }
                         startActivityForResult(intent, REQUEST_SAVE)
                     }
                     .show()
             }
         }
-        content.addView(compressButton)
-        progress = ProgressBar(this).apply { visibility = View.GONE }
-        content.addView(progress)
+        content.addView(compressButton, fullWidth())
+        progress = ProgressBar(this).apply {
+            visibility = View.GONE
+            isIndeterminate = true
+        }
+        val progressParams = fullWidth().apply {
+            topMargin = dp(12)
+            bottomMargin = dp(4)
+        }
+        content.addView(progress, progressParams)
+
+        val resultCard = makeCard()
+        resultCard.addView(sectionTitle("COMPRESSION RESULT"))
         statusLabel = TextView(this).apply {
-            text = "Your PDF stays on this device."
+            text = "Your PDF stays on this device. Select a file to begin."
             textSize = 14f
             setTextColor(0xFF475569.toInt())
-            setPadding(0, 12, 0, 0)
+            setLineSpacing(dp(4).toFloat(), 1.0f)
+            setPadding(0, dp(4), 0, dp(4))
         }
-        content.addView(statusLabel)
-        openButton = Button(this).apply {
-            text = "Open compressed PDF"
+        resultCard.addView(statusLabel, fullWidth())
+        openButton = actionButton("Open compressed PDF", 0xFFE0F2FE.toInt(), 0xFF075985.toInt()).apply {
             visibility = View.GONE
             setOnClickListener { openLastCompressedPdf() }
         }
-        content.addView(openButton)
+        val openParams = fullWidth().apply { topMargin = dp(12) }
+        resultCard.addView(openButton, openParams)
+        val resultParams = fullWidth().apply { topMargin = dp(14) }
+        content.addView(resultCard, resultParams)
+
+        addGap(content, 18)
+        content.addView(TextView(this).apply {
+            text = "Developed by Shartendu"
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(0xFF334155.toInt())
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(8), dp(12), dp(8), dp(6))
+        }, fullWidth())
+        content.addView(TextView(this).apply {
+            text = "KeRi PDF Compressor  •  Files stay on your device"
+            textSize = 11f
+            setTextColor(0xFF94A3B8.toInt())
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(8), 0, dp(8), dp(14))
+        }, fullWidth())
 
         page.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(page)
@@ -170,11 +278,47 @@ class MainActivity : Activity() {
 
     private fun sectionTitle(value: String) = TextView(this).apply {
         text = value
-        textSize = 17f
+        textSize = 11f
+        letterSpacing = 0.10f
         setTypeface(null, android.graphics.Typeface.BOLD)
-        setTextColor(0xFF0F172A.toInt())
-        setPadding(0, 10, 0, 8)
+        setTextColor(0xFF64748B.toInt())
+        setPadding(0, 0, 0, dp(12))
     }
+
+    private fun makeCard() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(17), dp(17), dp(17), dp(17))
+        background = rounded(0xFFFFFFFF.toInt(), 18, 0xFFE2E8F0.toInt())
+        elevation = dp(2).toFloat()
+    }
+
+    private fun actionButton(label: String, backgroundColor: Int, textColor: Int) = Button(this).apply {
+        text = label
+        isAllCaps = false
+        textSize = 15f
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setTextColor(textColor)
+        minHeight = dp(50)
+        setPadding(dp(16), dp(11), dp(16), dp(11))
+        background = rounded(backgroundColor, 14)
+        stateListAnimator = null
+    }
+
+    private fun rounded(color: Int, radius: Int, strokeColor: Int? = null): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
+            if (strokeColor != null) setStroke(dp(1), strokeColor)
+        }
+    }
+
+    private fun fullWidth() = LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT)
+
+    private fun addGap(parent: LinearLayout, heightDp: Int) {
+        parent.addView(View(this), LinearLayout.LayoutParams(1, dp(heightDp)))
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun selectedMode(): Int {
         val checked = modeGroup.checkedRadioButtonId
