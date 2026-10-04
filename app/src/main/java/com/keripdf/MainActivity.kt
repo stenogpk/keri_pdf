@@ -404,8 +404,6 @@ class MainActivity : Activity() {
                 return
             }
             selectedBulkPdfs = picked.distinct()
-            pendingMode = selectedMode()
-            pendingTargetKb = targetSize.text.toString().toIntOrNull()
             if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
                 targetSize.error = "Enter a target size in KB"
                 return
@@ -429,8 +427,10 @@ class MainActivity : Activity() {
     }
 
     private fun launchBulkPicker() {
-        pendingMode = selectedMode()
-        pendingTargetKb = targetSize.text.toString().toIntOrNull()
+        pendingTargetKb = targetSize.text.toString().trim().toIntOrNull()
+        // In bulk mode, a valid KB value always means strict per-file target mode,
+        // even if the user has left the quality-preserving radio option selected.
+        pendingMode = if ((pendingTargetKb ?: 0) > 0) 1 else selectedMode()
         if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
             targetSize.error = "Enter a target size in KB"
             return
@@ -475,8 +475,14 @@ class MainActivity : Activity() {
                             val result = compressPdf(inputFile, mode, targetKb)
                             resultFile = result.file
                             val maxBytes = if (mode == 1) targetLimitBytes(targetKb) else Long.MAX_VALUE
-                            if (mode == 1 && result.bytes > maxBytes) {
-                                failed.add("$safeOriginal (target not achievable)")
+                            // Never trust a cached/result metadata size alone: inspect the actual
+                            // generated file immediately before adding it to the ZIP.
+                            val actualBytes = result.file.length()
+                            val withinTarget = mode != 1 ||
+                                (result.targetReached != false && result.bytes <= maxBytes && actualBytes <= maxBytes)
+                            if (!withinTarget) {
+                                failed.add("$safeOriginal (actual output " + formatBytes(actualBytes) +
+                                    " exceeds the safe limit of " + formatBytes(maxBytes) + ")")
                             } else {
                                 val prefixed = if (safeOriginal.startsWith("KeRi", ignoreCase = true)) safeOriginal else "KeRi$safeOriginal"
                                 val entryName = uniqueZipName(prefixed, usedNames)
@@ -504,6 +510,7 @@ class MainActivity : Activity() {
                     openBulkZipButton.visibility = View.VISIBLE
                     shareBulkZipButton.visibility = View.VISIBLE
                     val summary = "Bulk ZIP saved\nPDFs added: $completed / ${inputs.size}" +
+                        if (mode == 1) "\nTarget per PDF: " + targetKb + " KB (1 KB safety margin)" else "" +
                         if (failed.isNotEmpty()) "\nSkipped: ${failed.size}\n" + failed.take(8).joinToString("\n") else ""
                     statusLabel.text = summary
                     Toast.makeText(this, "Bulk ZIP created successfully", Toast.LENGTH_LONG).show()
