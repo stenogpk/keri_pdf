@@ -6,6 +6,8 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.view.WindowInsets
 import android.os.ParcelFileDescriptor
 import android.view.View
 import android.widget.Button
@@ -42,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var compressButton: Button
     private lateinit var openButton: Button
+    private lateinit var shareButton: Button
     private var lastSavedPdf: Uri? = null
     private lateinit var targetSize: EditText
     private lateinit var modeGroup: RadioGroup
@@ -73,6 +76,12 @@ class MainActivity : Activity() {
             clipToPadding = false
         }
         scroll.addView(content)
+        page.setOnApplyWindowInsetsListener { _, insets ->
+            val topInset = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.statusBars()).top else insets.systemWindowInsetTop
+            val bottomInset = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom else insets.systemWindowInsetBottom
+            scroll.setPadding(dp(18), dp(16) + topInset, dp(18), dp(12) + bottomInset)
+            insets
+        }
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -252,6 +261,12 @@ class MainActivity : Activity() {
         }
         val openParams = fullWidth().apply { topMargin = dp(12) }
         resultCard.addView(openButton, openParams)
+        shareButton = actionButton("Share PDF", 0xFFDCFCE7.toInt(), 0xFF166534.toInt()).apply {
+            visibility = View.GONE
+            setOnClickListener { shareLastCompressedPdf() }
+        }
+        val shareParams = fullWidth().apply { topMargin = dp(10) }
+        resultCard.addView(shareButton, shareParams)
         val resultParams = fullWidth().apply { topMargin = dp(14) }
         content.addView(resultCard, resultParams)
 
@@ -274,6 +289,7 @@ class MainActivity : Activity() {
 
         page.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(page)
+        page.requestApplyInsets()
     }
 
     private fun sectionTitle(value: String) = TextView(this).apply {
@@ -366,6 +382,7 @@ class MainActivity : Activity() {
                     progress.visibility = View.GONE
                     compressButton.isEnabled = true
                     openButton.visibility = View.VISIBLE
+                    shareButton.visibility = View.VISIBLE
                     val saved = max(0L, sourceBytes - result.bytes)
                     val percent = if (sourceBytes > 0) saved * 100.0 / sourceBytes else 0.0
                     var message = "Original: " + formatBytes(sourceBytes) +
@@ -380,6 +397,7 @@ class MainActivity : Activity() {
                     progress.visibility = View.GONE
                     compressButton.isEnabled = true
                     openButton.visibility = View.GONE
+                    shareButton.visibility = View.GONE
                     statusLabel.text = "Compression failed: " + (error.localizedMessage ?: "Unknown error")
                 }
             }
@@ -515,6 +533,24 @@ class MainActivity : Activity() {
             startActivity(Intent.createChooser(intent, "Open compressed PDF"))
         } catch (_: Exception) {
             Toast.makeText(this, "No PDF viewer app found on this device", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun shareLastCompressedPdf() {
+        val uri = lastSavedPdf ?: run {
+            Toast.makeText(this, "No compressed PDF available yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = android.content.ClipData.newUri(contentResolver, "Compressed PDF", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Share compressed PDF"))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Could not open the sharing menu", Toast.LENGTH_LONG).show()
         }
     }
 
