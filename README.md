@@ -2,6 +2,11 @@
 
 Keri PDF is an offline-first Android PDF optimizer. Files are processed locally on the device.
 
+## Version 1.3.1
+- Status bar safe-area inset fix to keep the title panel below the system status bar.
+- Share PDF action for the saved compressed output.
+- Compression algorithms, quality presets and exact-KB target behavior unchanged.
+
 ## Version 1.3.0
 - Modern responsive card-based interface with readable spacing and wrapping.
 - App name: **KeRi PDF Compressor**.
