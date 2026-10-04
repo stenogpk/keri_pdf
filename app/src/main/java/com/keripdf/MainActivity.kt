@@ -412,56 +412,100 @@ class MainActivity : Activity() {
      */
     private fun compressPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         PDFBoxResourceLoader.init(applicationContext)
-        PDDocument.load(source).use { original ->
-            val hasSelectableText = try { PDFTextStripper().getText(original).trim().isNotEmpty() } catch (_: Exception) { true }
-            if (!hasSelectableText) return compressScannedPdf(source, mode, targetKb)
+        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+        if (mode == 1 && source.length() <= targetBytes) {
+            val copy = File(cacheDir, "keri_already_within_target_" + System.currentTimeMillis() + ".pdf")
+            source.copyTo(copy, overwrite = true)
+            return CompressionResult(copy, copy.length(), true)
         }
-        return compressTextPdf(source, mode, targetKb)
+        val hasSelectableText = PDDocument.load(source).use { document ->
+            try { PDFTextStripper().getText(document).trim().isNotEmpty() } catch (_: Exception) { true }
+        }
+        if (!hasSelectableText) return compressScannedPdf(source, mode, targetKb)
+        val textResult = compressTextPdf(source, mode, targetKb)
+        if (mode == 1 && textResult.bytes > targetBytes) {
+            textResult.file.delete()
+            return compressScannedPdf(source, mode, targetKb)
+        }
+        return textResult
     }
 
     private fun compressScannedPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
-        val target = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
-        val candidates = if (mode == 1) listOf(115 to 76, 110 to 78, 120 to 72, 105 to 80, 100 to 82, 110 to 74, 100 to 78, 95 to 80, 90 to 82, 85 to 80)
-            else listOf(220 to 90)
-        var best: File? = null
-        var bestSize = Long.MAX_VALUE
-        var reached = false
-        for ((dpi, quality) in candidates) {
-            val output = File(cacheDir, "keri_scan_" + System.currentTimeMillis() + "_" + dpi + "_" + quality + ".pdf")
-            try {
-                PDDocument.load(source).use { input ->
-                    val renderer = PDFRenderer(input)
-                    PDDocument().use { result ->
-                        for (index in 0 until input.numberOfPages) {
-                            val sourcePage = input.getPage(index)
-                            val bitmap = renderer.renderImageWithDPI(index, dpi.toFloat(), ImageType.RGB)
-                            val jpeg = java.io.ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, jpeg)
-                            bitmap.recycle()
-                            val image = PDImageXObject.createFromByteArray(result, jpeg.toByteArray(), "scan-page.jpg")
-                            val page = PDPage(sourcePage.mediaBox)
-                            result.addPage(page)
-                            PDPageContentStream(result, page).use { stream ->
-                                stream.drawImage(image, 0f, 0f, page.mediaBox.width, page.mediaBox.height)
-                            }
-                        }
-                        result.save(output)
-                    }
+        if (mode != 1) {
+            val output = renderScannedCandidate(source, 220, 90)
+            return CompressionResult(output, output.length(), null)
+        }
+        val targetBytes = (targetKb ?: 0).toLong() * 1024L
+        val dpiLevels = listOf(220, 180, 150, 120, 100, 80, 60, 40, 28)
+        var bestFile: File? = null
+        var bestScore = -1L
+        for (dpi in dpiLevels) {
+            if (bestScore >= dpi.toLong() * 95L) break
+            var low = 15
+            var high = 95
+            var bestAtDpi: File? = null
+            var bestQuality = -1
+            val minimum = renderScannedCandidate(source, dpi, 15)
+            if (minimum.length() <= targetBytes) {
+                bestAtDpi = minimum
+                bestQuality = 15
+            } else {
+                minimum.delete()
+                continue
+            }
+            while (low <= high) {
+                val quality = (low + high) / 2
+                val candidate = renderScannedCandidate(source, dpi, quality)
+                if (candidate.length() <= targetBytes) {
+                    bestAtDpi?.delete()
+                    bestAtDpi = candidate
+                    bestQuality = quality
+                    low = quality + 1
+                } else {
+                    candidate.delete()
+                    high = quality - 1
                 }
-                if (output.length() < bestSize) { best?.delete(); best = output; bestSize = output.length() } else output.delete()
-                if (bestSize <= target) { reached = true; break }
-            } catch (e: Exception) { output.delete(); if (best == null) throw e }
+            }
+            val score = dpi.toLong() * bestQuality.toLong()
+            if (score > bestScore) {
+                bestFile?.delete()
+                bestFile = bestAtDpi
+                bestScore = score
+            } else {
+                bestAtDpi?.delete()
+            }
         }
-        val finalFile = best ?: error("Could not compress scanned PDF")
-        if (finalFile.length() >= source.length()) {
-            finalFile.delete()
-            val copy = File(cacheDir, "keri_scan_original_" + System.currentTimeMillis() + ".pdf")
-            source.copyTo(copy, overwrite = true)
-            return CompressionResult(copy, copy.length(), if (mode == 1) false else null)
+        val finalFile = bestFile ?: run {
+            val diagnostic = File(cacheDir, "keri_target_unreachable_" + System.currentTimeMillis() + ".pdf")
+            source.copyTo(diagnostic, overwrite = true)
+            return CompressionResult(diagnostic, diagnostic.length(), false)
         }
-        return CompressionResult(finalFile, finalFile.length(), if (mode == 1) reached else null)
+        return CompressionResult(finalFile, finalFile.length(), finalFile.length() <= targetBytes)
     }
 
+    private fun renderScannedCandidate(source: File, dpi: Int, quality: Int): File {
+        val output = File(cacheDir, "keri_scan_" + System.currentTimeMillis() + "_" + dpi + "_" + quality + ".pdf")
+        PDDocument.load(source).use { input ->
+            val renderer = PDFRenderer(input)
+            PDDocument().use { result ->
+                for (index in 0 until input.numberOfPages) {
+                    val sourcePage = input.getPage(index)
+                    val bitmap = renderer.renderImageWithDPI(index, dpi.toFloat(), ImageType.RGB)
+                    val jpeg = java.io.ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, jpeg)
+                    bitmap.recycle()
+                    val image = PDImageXObject.createFromByteArray(result, jpeg.toByteArray(), "scan-page.jpg")
+                    val page = PDPage(sourcePage.mediaBox)
+                    result.addPage(page)
+                    PDPageContentStream(result, page).use { stream ->
+                        stream.drawImage(image, 0f, 0f, page.mediaBox.width, page.mediaBox.height)
+                    }
+                }
+                result.save(output)
+            }
+        }
+        return output
+    }
     private fun compressTextPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
         val qualities = if (mode == 1) listOf(88, 80, 72, 64, 56, 48) else listOf(82)
