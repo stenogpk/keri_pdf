@@ -1,8 +1,14 @@
-# Keri PDF
+# KeRi PDF Compressor
 
 Keri PDF is an offline-first Android PDF optimizer. Files are processed locally on the device.
 
-## Version 1.2.0 approach
+## Version 1.3.0
+- Modern responsive card-based interface with readable spacing and wrapping.
+- App name: **KeRi PDF Compressor**.
+- In-app credit: **Developed by Shartendu**.
+- Compression engine and target-size settings are unchanged from the validated 1.2.1 build.
+
+## Compression approach
 - Uses PDFBox-Android to preserve text PDFs and apply a dedicated JPEG/DPI optimization path to image-only scanned PDFs.
 - Preserves the existing PDF page content, selectable/searchable text, vector graphics and page geometry as far as supported by the PDF library.
 - Saves a new copy through Android's document picker; the source file is not overwritten.
@@ -16,7 +22,7 @@ A structure-preserving rewrite cannot guarantee a smaller file for every PDF. PD
 This version has been build-validated through GitHub Actions. Real-device testing with varied PDFs (text PDFs, Hindi notes, scanned documents, image-heavy PDFs, forms and password-protected PDFs) is still required before calling it fully production-verified.
 
 ## Build and install
-Open **Actions → Keri PDF Final APK Build → latest successful run → Artifacts** and download `Keri-PDF-v1.2.0-APK`. Extract the ZIP and install `app-debug.apk` on Android. The workflow also publishes a SHA-256 checksum file.
+Open **Actions → Keri PDF Final APK Build → latest successful run → Artifacts** and download `Keri-PDF-v1.3.0-APK`. Extract the ZIP and install `app-debug.apk` on Android. The workflow also publishes a SHA-256 checksum file.
 
 ## Library
 Uses [PdfBox-Android](https://github.com/TomRoush/PdfBox-Android), Apache License 2.0.
