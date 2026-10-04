@@ -259,7 +259,7 @@ class MainActivity : Activity() {
 
     private fun compressScannedPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         val target = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
-        val candidates = if (mode == 1) listOf(220 to 90, 200 to 88, 180 to 86, 160 to 84, 150 to 82, 140 to 80, 120 to 78, 110 to 76, 100 to 74)
+        val candidates = if (mode == 1) listOf(115 to 76, 110 to 78, 120 to 72, 105 to 80, 100 to 82, 110 to 74, 100 to 78, 95 to 80, 90 to 82, 85 to 80)
             else listOf(220 to 90)
         var best: File? = null
         var bestSize = Long.MAX_VALUE
