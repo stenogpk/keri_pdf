@@ -4,6 +4,8 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.app.AlertDialog
 import android.content.Intent
+import android.database.Cursor
+import android.provider.OpenableColumns
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Bundle
@@ -33,6 +35,8 @@ import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
@@ -42,6 +46,8 @@ import kotlin.math.max
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPdf: Uri? = null
+    private val selectedPdfs = mutableListOf<Uri>()
+    private var lastSavedZip: Uri? = null
     private var selectedBulkPdfs: List<Uri> = emptyList()
     private lateinit var fileLabel: TextView
     private lateinit var statusLabel: TextView
@@ -49,6 +55,8 @@ class MainActivity : Activity() {
     private lateinit var compressButton: Button
     private lateinit var openButton: Button
     private lateinit var shareButton: Button
+    private lateinit var bulkSelectButton: Button
+    private lateinit var bulkCompressButton: Button
     private lateinit var bulkButton: Button
     private lateinit var openBulkZipButton: Button
     private lateinit var shareBulkZipButton: Button
