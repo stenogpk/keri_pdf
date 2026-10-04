@@ -474,7 +474,7 @@ class MainActivity : Activity() {
                             } ?: error("Could not read $safeOriginal")
                             val result = compressPdf(inputFile, mode, targetKb)
                             resultFile = result.file
-                            val maxBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+                            val maxBytes = if (mode == 1) targetLimitBytes(targetKb) else Long.MAX_VALUE
                             if (mode == 1 && result.bytes > maxBytes) {
                                 failed.add("$safeOriginal (target not achievable)")
                             } else {
@@ -581,7 +581,7 @@ class MainActivity : Activity() {
 
                 val sourceBytes = source.length()
                 val result = compressPdf(source, pendingMode, pendingTargetKb)
-                val hardLimit = if (pendingMode == 1) (pendingTargetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+                val hardLimit = if (pendingMode == 1) targetLimitBytes(pendingTargetKb) else Long.MAX_VALUE
                 if (pendingMode == 1 && result.bytes > hardLimit) {
                     result.file.delete()
                     source.delete()
@@ -630,13 +630,19 @@ class MainActivity : Activity() {
 
     private data class CompressionResult(val file: File, val bytes: Long, val targetReached: Boolean?)
 
+    // Keep a 1 KB safety margin below the requested target whenever possible.
+    private fun targetLimitBytes(targetKb: Int?): Long {
+        val requested = targetLimitBytes(targetKb)
+        return if (requested > 1024L) requested - 1024L else requested
+    }
+
     /**
      * Text PDFs keep their original text/vector structure. Image-only scanned PDFs use a
      * dedicated page-rendering path so the scan itself can actually be recompressed.
      */
     private fun compressPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         PDFBoxResourceLoader.init(applicationContext)
-        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+        val targetBytes = if (mode == 1) targetLimitBytes(targetKb) else Long.MAX_VALUE
         if (mode == 1 && source.length() <= targetBytes) {
             val copy = File(cacheDir, "keri_already_within_target_" + System.currentTimeMillis() + ".pdf")
             source.copyTo(copy, overwrite = true)
@@ -665,7 +671,7 @@ class MainActivity : Activity() {
             }
             return CompressionResult(output, output.length(), null)
         }
-        val targetBytes = (targetKb ?: 0).toLong() * 1024L
+        val targetBytes = targetLimitBytes(targetKb)
         val dpiLevels = listOf(220, 180, 150, 120, 100, 80, 60, 40, 28)
         var bestFile: File? = null
         var bestScore = -1L
@@ -737,7 +743,7 @@ class MainActivity : Activity() {
         return output
     }
     private fun compressTextPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
-        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+        val targetBytes = if (mode == 1) targetLimitBytes(targetKb) else Long.MAX_VALUE
         val qualities = if (mode == 1) listOf(96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12) else listOf(82)
         var bestFile: File? = null
         var bestBytes = Long.MAX_VALUE
