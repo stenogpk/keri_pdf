@@ -7,7 +7,6 @@ import android.content.Intent
 import android.database.Cursor
 import android.provider.OpenableColumns
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.os.Bundle
 import android.os.Build
 import android.view.WindowInsets
@@ -39,15 +38,11 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlin.math.max
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPdf: Uri? = null
-    private val selectedPdfs = mutableListOf<Uri>()
-    private var lastSavedZip: Uri? = null
     private var selectedBulkPdfs: List<Uri> = emptyList()
     private lateinit var fileLabel: TextView
     private lateinit var statusLabel: TextView
@@ -55,8 +50,6 @@ class MainActivity : Activity() {
     private lateinit var compressButton: Button
     private lateinit var openButton: Button
     private lateinit var shareButton: Button
-    private lateinit var bulkSelectButton: Button
-    private lateinit var bulkCompressButton: Button
     private lateinit var bulkButton: Button
     private lateinit var openBulkZipButton: Button
     private lateinit var shareBulkZipButton: Button
@@ -146,18 +139,6 @@ class MainActivity : Activity() {
         }
         fileCard.addView(chooseButton, fullWidth())
 
-        bulkSelectButton = actionButton("Choose up to 50 PDFs (Bulk)", 0xFFDCFCE7.toInt(), 0xFF166534.toInt()).apply {
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/pdf"
-                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                }
-                startActivityForResult(intent, REQUEST_BULK_OPEN)
-            }
-        }
-        val bulkSelectParams = fullWidth().apply { topMargin = dp(10) }
-        fileCard.addView(bulkSelectButton, bulkSelectParams)
         fileLabel = TextView(this).apply {
             text = "No PDF selected"
             textSize = 13f
@@ -279,33 +260,6 @@ class MainActivity : Activity() {
         }
         content.addView(compressButton, fullWidth())
 
-        bulkCompressButton = actionButton("Compress selected PDFs to ZIP", 0xFF172554.toInt(), 0xFFFFFFFF.toInt()).apply {
-            isEnabled = false
-            setOnClickListener {
-                if (selectedPdfs.isEmpty()) return@setOnClickListener
-                pendingMode = selectedMode()
-                pendingTargetKb = targetSize.text.toString().toIntOrNull()
-                if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
-                    targetSize.error = "Enter a target size in KB"
-                    return@setOnClickListener
-                }
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Bulk compression")
-                    .setMessage("Each PDF will be compressed separately. Only files within the target KB limit will be included in the ZIP.")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Create ZIP") { _, _ ->
-                        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "application/zip"
-                            putExtra(Intent.EXTRA_TITLE, "KeRi_Bulk_Compressed.zip")
-                        }
-                        startActivityForResult(intent, REQUEST_BULK_SAVE)
-                    }
-                    .show()
-            }
-        }
-        val bulkCompressParams = fullWidth().apply { topMargin = dp(10) }
-        content.addView(bulkCompressButton, bulkCompressParams)
         progress = ProgressBar(this).apply {
             visibility = View.GONE
             isIndeterminate = true
