@@ -20,6 +20,11 @@ import android.widget.Toast
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.rendering.PDFRenderer
+import com.tom_roush.pdfbox.rendering.ImageType
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
@@ -239,8 +244,63 @@ class MainActivity : Activity() {
 
     private data class CompressionResult(val file: File, val bytes: Long, val targetReached: Boolean?)
 
-    /** Re-encode embedded raster images only; leave page text and vector streams intact. */
+    /**
+     * Text PDFs keep their original text/vector structure. Image-only scanned PDFs use a
+     * dedicated page-rendering path so the scan itself can actually be recompressed.
+     */
     private fun compressPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
+        PDFBoxResourceLoader.init(applicationContext)
+        PDDocument.load(source).use { original ->
+            val hasSelectableText = try { PDFTextStripper().getText(original).trim().isNotEmpty() } catch (_: Exception) { true }
+            if (!hasSelectableText) return compressScannedPdf(source, mode, targetKb)
+        }
+        return compressTextPdf(source, mode, targetKb)
+    }
+
+    private fun compressScannedPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
+        val target = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+        val candidates = if (mode == 1) listOf(220 to 90, 200 to 88, 180 to 86, 160 to 84, 150 to 82, 140 to 80, 120 to 78, 110 to 76, 100 to 74)
+            else listOf(220 to 90)
+        var best: File? = null
+        var bestSize = Long.MAX_VALUE
+        var reached = false
+        for ((dpi, quality) in candidates) {
+            val output = File(cacheDir, "keri_scan_" + System.currentTimeMillis() + "_" + dpi + "_" + quality + ".pdf")
+            try {
+                PDDocument.load(source).use { input ->
+                    val renderer = PDFRenderer(input)
+                    PDDocument().use { result ->
+                        for (index in 0 until input.numberOfPages) {
+                            val sourcePage = input.getPage(index)
+                            val bitmap = renderer.renderImageWithDPI(index, dpi.toFloat(), ImageType.RGB)
+                            val jpeg = java.io.ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, jpeg)
+                            bitmap.recycle()
+                            val image = PDImageXObject.createFromByteArray(result, jpeg.toByteArray(), "scan-page.jpg")
+                            val page = PDPage(sourcePage.mediaBox)
+                            result.addPage(page)
+                            PDPageContentStream(result, page).use { stream ->
+                                stream.drawImage(image, 0f, 0f, page.mediaBox.width, page.mediaBox.height)
+                            }
+                        }
+                        result.save(output)
+                    }
+                }
+                if (output.length() < bestSize) { best?.delete(); best = output; bestSize = output.length() } else output.delete()
+                if (bestSize <= target) { reached = true; break }
+            } catch (e: Exception) { output.delete(); if (best == null) throw e }
+        }
+        val finalFile = best ?: error("Could not compress scanned PDF")
+        if (finalFile.length() >= source.length()) {
+            finalFile.delete()
+            val copy = File(cacheDir, "keri_scan_original_" + System.currentTimeMillis() + ".pdf")
+            source.copyTo(copy, overwrite = true)
+            return CompressionResult(copy, copy.length(), if (mode == 1) false else null)
+        }
+        return CompressionResult(finalFile, finalFile.length(), if (mode == 1) reached else null)
+    }
+
+    private fun compressTextPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
         val qualities = if (mode == 1) listOf(88, 80, 72, 64, 56, 48) else listOf(82)
         var bestFile: File? = null
@@ -249,33 +309,22 @@ class MainActivity : Activity() {
         for (quality in qualities) {
             val candidate = File(cacheDir, "keri_opt_" + System.currentTimeMillis() + "_" + quality + ".pdf")
             try {
-                PDFBoxResourceLoader.init(applicationContext)
                 PDDocument.load(source).use { document ->
-                    for (page in document.pages) {
-                        page.resources?.let { optimizeResources(document, it, quality, HashSet<Int>()) }
-                    }
+                    for (page in document.pages) page.resources?.let { optimizeResources(document, it, quality, HashSet<Int>()) }
                     document.save(candidate)
                 }
-                val size = candidate.length()
-                if (size < bestBytes) {
-                    bestFile?.delete()
-                    bestFile = candidate
-                    bestBytes = size
-                } else candidate.delete()
+                if (candidate.length() < bestBytes) { bestFile?.delete(); bestFile = candidate; bestBytes = candidate.length() } else candidate.delete()
                 if (bestBytes <= targetBytes) { reached = true; break }
-            } catch (e: Exception) {
-                candidate.delete()
-                if (bestFile == null) throw e
-            }
+            } catch (e: Exception) { candidate.delete(); if (bestFile == null) throw e }
         }
-        val resultFile = bestFile ?: error("PDF optimization did not produce an output")
-        if (source.length() - resultFile.length() <= 0L) {
-            val unchanged = File(cacheDir, "keri_unchanged_" + System.currentTimeMillis() + ".pdf")
-            source.copyTo(unchanged, overwrite = true)
-            resultFile.delete()
-            return CompressionResult(unchanged, unchanged.length(), if (mode == 1) false else null)
+        val result = bestFile ?: error("PDF optimization did not produce an output")
+        if (result.length() >= source.length()) {
+            result.delete()
+            val copy = File(cacheDir, "keri_unchanged_" + System.currentTimeMillis() + ".pdf")
+            source.copyTo(copy, overwrite = true)
+            return CompressionResult(copy, copy.length(), if (mode == 1) false else null)
         }
-        return CompressionResult(resultFile, resultFile.length(), if (mode == 1) reached else null)
+        return CompressionResult(result, result.length(), if (mode == 1) reached else null)
     }
 
     private fun optimizeResources(
