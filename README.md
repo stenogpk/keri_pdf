@@ -2,6 +2,12 @@
 
 Keri PDF is an offline-first Android PDF optimizer. Files are processed locally on the device.
 
+## Version 1.3.3
+- Exact target mode now searches a wider resolution/quality range and selects the strongest candidate found within the requested byte cap.
+- A final hard check prevents saving any output above the requested KB limit; if the limit is technically unreachable, no oversized PDF is saved.
+- Structure-preserving optimization is attempted first; image-based fallback is used only if needed to meet the target.
+- Quality-preserving mode and the UI, app icon, opening and sharing actions remain unchanged.
+
 ## Version 1.3.1
 - Status bar safe-area inset fix to keep the title panel below the system status bar.
 - Share PDF action for the saved compressed output.
