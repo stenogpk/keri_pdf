@@ -1,6 +1,7 @@
 package com.keripdf
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
@@ -102,7 +103,7 @@ class MainActivity : Activity() {
         content.addView(targetSize)
 
         content.addView(TextView(this).apply {
-            text = "Quality-first processing keeps the original PDF page content, text and vector graphics instead of converting pages into blurry images. Exact target mode checks whether the target is reached without sacrificing quality; not every PDF can be reduced to the requested size."
+            text = "Keri PDF optimizes embedded images while keeping page text and vector content intact. Transparent/masked images are left unchanged. Very small target sizes may not be achievable without visible image quality loss."
             textSize = 13f
             setTextColor(0xFF92400E.toInt())
             setBackgroundColor(0xFFFFF7ED.toInt())
@@ -122,7 +123,7 @@ class MainActivity : Activity() {
                 }
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Confirm quality-preserving compression")
-                    .setMessage("Keri PDF will optimize the PDF structure without rasterizing pages. Text and vector content are preserved. Very small target sizes may not be achievable without quality loss. Continue with a copy? Your original file will not be changed.")
+                    .setMessage("Keri PDF will optimize embedded images, not flatten whole pages. Text and vector content remain in the PDF. Images may become softer at lower target sizes. Continue with a copy? Your original file will not be changed.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Continue") { _, _ ->
                         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -232,20 +233,74 @@ class MainActivity : Activity() {
 
     private data class CompressionResult(val file: File, val bytes: Long, val targetReached: Boolean?)
 
-    /**
-     * Quality-first PDF rewrite. PDFBox rewrites the document structure instead of rendering
-     * every page to a bitmap, so text, vector graphics, page geometry and searchable content
-     * are retained. This deliberately does not destroy quality just to force a target size.
-     */
+    /** Re-encode embedded raster images only; leave page text and vector streams intact. */
     private fun compressPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
-        val destination = File(cacheDir, "keri_optimized_" + System.currentTimeMillis() + ".pdf")
-        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
-        com.tom_roush.pdfbox.pdmodel.PDDocument.load(source).use { document ->
-            document.save(destination)
+        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+        val qualities = if (mode == 1) listOf(88, 80, 72, 64, 56, 48) else listOf(82)
+        var bestFile: File? = null
+        var bestBytes = Long.MAX_VALUE
+        var reached = false
+        for (quality in qualities) {
+            val candidate = File(cacheDir, "keri_opt_" + System.currentTimeMillis() + "_" + quality + ".pdf")
+            try {
+                com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
+                PDDocument.load(source).use { document ->
+                    for (page in document.pages) {
+                        page.resources?.let { optimizeResources(document, it, quality, HashSet<Int>()) }
+                    }
+                    document.save(candidate)
+                }
+                val size = candidate.length()
+                if (size < bestBytes) {
+                    bestFile?.delete()
+                    bestFile = candidate
+                    bestBytes = size
+                } else candidate.delete()
+                if (bestBytes <= targetBytes) { reached = true; break }
+            } catch (e: Exception) {
+                candidate.delete()
+                if (bestFile == null) throw e
+            }
         }
-        val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else null
-        val reached = if (targetBytes == null) null else destination.length() <= targetBytes
-        return CompressionResult(destination, destination.length(), reached)
+        val resultFile = bestFile ?: error("PDF optimization did not produce an output")
+        if (source.length() - resultFile.length() <= 0L) {
+            val unchanged = File(cacheDir, "keri_unchanged_" + System.currentTimeMillis() + ".pdf")
+            source.copyTo(unchanged, overwrite = true)
+            resultFile.delete()
+            return CompressionResult(unchanged, unchanged.length(), if (mode == 1) false else null)
+        }
+        return CompressionResult(resultFile, resultFile.length(), if (mode == 1) reached else null)
+    }
+
+    private fun optimizeResources(
+        document: PDDocument,
+        resources: com.tom_roush.pdfbox.pdmodel.PDResources,
+        quality: Int,
+        visitedForms: MutableSet<Int>
+    ) {
+        for (name in resources.xObjectNames.toList()) {
+            try {
+                when (val item = resources.getXObject(name)) {
+                    is PDImageXObject -> {
+                        val dict = item.cosObject
+                        if (dict.containsKey(COSName.SMASK) || dict.containsKey(COSName.MASK) || dict.getBoolean(COSName.IMAGE_MASK, false)) continue
+                        val bitmap = item.image ?: continue
+                        if (bitmap.width < 160 || bitmap.height < 160) continue
+                        val buffer = java.io.ByteArrayOutputStream()
+                        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, quality, buffer)) continue
+                        val bytes = buffer.toByteArray()
+                        val oldLength = dict.getLong(COSName.LENGTH, Long.MAX_VALUE)
+                        if (bytes.size.toLong() >= oldLength * 0.95) continue
+                        val replacement = PDImageXObject.createFromByteArray(document, bytes, "keri-image.jpg")
+                        resources.put(name, replacement)
+                    }
+                    is PDFormXObject -> {
+                        val id = System.identityHashCode(item.cosObject)
+                        if (visitedForms.add(id)) item.resources?.let { optimizeResources(document, it, quality, visitedForms) }
+                    }
+                }
+            } catch (_: Exception) { /* Skip unsupported images; preserve the rest of the document. */ }
+        }
     }
 
     private fun openLastCompressedPdf() {
