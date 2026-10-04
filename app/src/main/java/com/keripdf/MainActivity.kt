@@ -632,7 +632,7 @@ class MainActivity : Activity() {
 
     // Keep a 1 KB safety margin below the requested target whenever possible.
     private fun targetLimitBytes(targetKb: Int?): Long {
-        val requested = targetLimitBytes(targetKb)
+        val requested = (targetKb ?: 0).toLong() * 1024L
         return if (requested > 1024L) requested - 1024L else requested
     }
 
