@@ -200,7 +200,7 @@ class MainActivity : Activity() {
             setTextColor(0xFF9A3412.toInt())
         })
         note.addView(TextView(this).apply {
-            text = "Very small file sizes can require image quality reduction. Your original PDF is never overwritten."
+            text = "Exact target mode searches for the best quality within your KB limit. Very small targets may require page-image conversion, so text may no longer be selectable/searchable. Your original PDF is never overwritten."
             textSize = 12f
             setTextColor(0xFF9A3412.toInt())
             setLineSpacing(dp(3).toFloat(), 1.0f)
