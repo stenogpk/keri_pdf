@@ -371,10 +371,24 @@ class MainActivity : Activity() {
 
                 val sourceBytes = source.length()
                 val result = compressPdf(source, pendingMode, pendingTargetKb)
+                val hardLimit = if (pendingMode == 1) (pendingTargetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+                if (pendingMode == 1 && result.bytes > hardLimit) {
+                    result.file.delete()
+                    source.delete()
+                    try { android.provider.DocumentsContract.deleteDocument(contentResolver, outputUri) } catch (_: Exception) { }
+                    runOnUiThread {
+                        progress.visibility = View.GONE
+                        compressButton.isEnabled = true
+                        openButton.visibility = View.GONE
+                        shareButton.visibility = View.GONE
+                        statusLabel.text = "The requested " + pendingTargetKb + " KB limit could not be met. No oversized PDF was saved. Try a larger target size."
+                        Toast.makeText(this, "Target limit could not be met. No oversized file saved.", Toast.LENGTH_LONG).show()
+                    }
+                    return@execute
+                }
                 contentResolver.openOutputStream(outputUri, "w")?.use { output ->
                     result.file.inputStream().use { input -> input.copyTo(output) }
                 } ?: error("Could not save the compressed PDF")
-
                 lastSavedPdf = outputUri
                 source.delete()
                 result.file.delete()
@@ -388,7 +402,7 @@ class MainActivity : Activity() {
                     var message = "Original: " + formatBytes(sourceBytes) +
                         "\nCompressed: " + formatBytes(result.bytes) +
                         "\nSaved: " + formatBytes(saved) + " (" + DecimalFormat("0.0").format(percent) + "%)"
-                    if (result.targetReached == false) message += "\nTarget could not be reached at the available quality settings."
+                    if (pendingMode == 1) message += "\nTarget: " + pendingTargetKb + " KB  •  Within limit"
                     statusLabel.text = message
                     Toast.makeText(this, "Compressed PDF saved", Toast.LENGTH_LONG).show()
                 }
@@ -508,7 +522,7 @@ class MainActivity : Activity() {
     }
     private fun compressTextPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         val targetBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
-        val qualities = if (mode == 1) listOf(88, 80, 72, 64, 56, 48) else listOf(82)
+        val qualities = if (mode == 1) listOf(96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12) else listOf(82)
         var bestFile: File? = null
         var bestBytes = Long.MAX_VALUE
         var reached = false
