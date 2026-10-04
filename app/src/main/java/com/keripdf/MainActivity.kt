@@ -447,6 +447,12 @@ class MainActivity : Activity() {
     private fun compressScannedPdf(source: File, mode: Int, targetKb: Int?): CompressionResult {
         if (mode != 1) {
             val output = renderScannedCandidate(source, 220, 90)
+            if (output.length() >= source.length()) {
+                output.delete()
+                val copy = File(cacheDir, "keri_scan_original_" + System.currentTimeMillis() + ".pdf")
+                source.copyTo(copy, overwrite = true)
+                return CompressionResult(copy, copy.length(), null)
+            }
             return CompressionResult(output, output.length(), null)
         }
         val targetBytes = (targetKb ?: 0).toLong() * 1024L
