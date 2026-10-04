@@ -160,6 +160,13 @@ class MainActivity : Activity() {
         }
         val bulkParams = fullWidth().apply { topMargin = dp(12) }
         fileCard.addView(bulkButton, bulkParams)
+        fileCard.addView(TextView(this).apply {
+            text = "Select up to 50 PDFs. The KB target applies to each PDF separately; files that cannot meet it are skipped. ZIP size is the combined archive size."
+            textSize = 11f
+            setTextColor(0xFF64748B.toInt())
+            setLineSpacing(dp(2).toFloat(), 1.0f)
+            setPadding(dp(2), dp(7), dp(2), 0)
+        }, fullWidth())
         content.addView(fileCard, fullWidth())
         addGap(content, 14)
 
@@ -384,14 +391,14 @@ class MainActivity : Activity() {
         if (requestCode == REQUEST_OPEN) {
             val selected = uri ?: return
             selectedPdf = selected
-            fileLabel.text = "Selected PDF: " + (uri.lastPathSegment ?: "document.pdf")
+            fileLabel.text = "Selected PDF: " + (selected.lastPathSegment ?: "document.pdf")
             statusLabel.text = "Ready to compress"
             compressButton.isEnabled = true
         } else if (requestCode == REQUEST_SAVE) {
             startCompression(uri ?: return)
         } else if (requestCode == REQUEST_BULK_OPEN) {
             val picked = ArrayList<Uri>()
-            val clip = data.clipData
+            val clip = data?.clipData
             if (clip != null) {
                 for (i in 0 until clip.itemCount) picked.add(clip.getItemAt(i).uri)
             } else {
