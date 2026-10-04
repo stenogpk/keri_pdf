@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Bundle
 import android.os.Build
 import android.view.WindowInsets
@@ -34,18 +35,25 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.math.max
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var selectedPdf: Uri? = null
+    private var selectedBulkPdfs: List<Uri> = emptyList()
     private lateinit var fileLabel: TextView
     private lateinit var statusLabel: TextView
     private lateinit var progress: ProgressBar
     private lateinit var compressButton: Button
     private lateinit var openButton: Button
     private lateinit var shareButton: Button
+    private lateinit var bulkButton: Button
+    private lateinit var openBulkZipButton: Button
+    private lateinit var shareBulkZipButton: Button
     private var lastSavedPdf: Uri? = null
+    private var lastSavedBulkZip: Uri? = null
     private lateinit var targetSize: EditText
     private lateinit var modeGroup: RadioGroup
     private var pendingMode = 0
@@ -139,6 +147,11 @@ class MainActivity : Activity() {
         }
         val fileParams = fullWidth().apply { topMargin = dp(12) }
         fileCard.addView(fileLabel, fileParams)
+        bulkButton = actionButton("Bulk compress up to 50 PDFs  •  ZIP", 0xFFDBEAFE.toInt(), 0xFF1E3A8A.toInt()).apply {
+            setOnClickListener { launchBulkPicker() }
+        }
+        val bulkParams = fullWidth().apply { topMargin = dp(12) }
+        fileCard.addView(bulkButton, bulkParams)
         content.addView(fileCard, fullWidth())
         addGap(content, 14)
 
@@ -267,6 +280,18 @@ class MainActivity : Activity() {
         }
         val shareParams = fullWidth().apply { topMargin = dp(10) }
         resultCard.addView(shareButton, shareParams)
+        openBulkZipButton = actionButton("Open bulk ZIP", 0xFFE0E7FF.toInt(), 0xFF3730A3.toInt()).apply {
+            visibility = View.GONE
+            setOnClickListener { openLastBulkZip() }
+        }
+        val bulkOpenParams = fullWidth().apply { topMargin = dp(10) }
+        resultCard.addView(openBulkZipButton, bulkOpenParams)
+        shareBulkZipButton = actionButton("Share bulk ZIP", 0xFFF3E8FF.toInt(), 0xFF6B21A8.toInt()).apply {
+            visibility = View.GONE
+            setOnClickListener { shareLastBulkZip() }
+        }
+        val bulkShareParams = fullWidth().apply { topMargin = dp(10) }
+        resultCard.addView(shareBulkZipButton, bulkShareParams)
         val resultParams = fullWidth().apply { topMargin = dp(14) }
         content.addView(resultCard, resultParams)
 
@@ -353,7 +378,179 @@ class MainActivity : Activity() {
             compressButton.isEnabled = true
         } else if (requestCode == REQUEST_SAVE) {
             startCompression(uri)
+        } else if (requestCode == REQUEST_BULK_OPEN) {
+            val picked = ArrayList<Uri>()
+            val clip = data.clipData
+            if (clip != null) {
+                for (i in 0 until clip.itemCount) picked.add(clip.getItemAt(i).uri)
+            } else {
+                picked.add(uri)
+            }
+            if (picked.isEmpty() || picked.size > MAX_BULK_FILES) {
+                Toast.makeText(this, "Select between 1 and 50 PDF files", Toast.LENGTH_LONG).show()
+                return
+            }
+            selectedBulkPdfs = picked.distinct()
+            pendingMode = selectedMode()
+            pendingTargetKb = targetSize.text.toString().toIntOrNull()
+            if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
+                targetSize.error = "Enter a target size in KB"
+                return
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Create bulk ZIP")
+                .setMessage("Compress ${selectedBulkPdfs.size} PDFs using the selected mode. In exact-target mode, the KB limit applies separately to every PDF. Files that cannot meet the limit will be skipped, never added oversized. Continue?")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Continue") { _, _ ->
+                    val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/zip"
+                        putExtra(Intent.EXTRA_TITLE, "KeRi_Bulk_Compressed.zip")
+                    }
+                    startActivityForResult(saveIntent, REQUEST_BULK_SAVE)
+                }
+                .show()
+        } else if (requestCode == REQUEST_BULK_SAVE) {
+            startBulkCompression(uri)
         }
+    }
+
+    private fun launchBulkPicker() {
+        pendingMode = selectedMode()
+        pendingTargetKb = targetSize.text.toString().toIntOrNull()
+        if (pendingMode == 1 && (pendingTargetKb ?: 0) <= 0) {
+            targetSize.error = "Enter a target size in KB"
+            return
+        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        startActivityForResult(intent, REQUEST_BULK_OPEN)
+    }
+
+    private fun startBulkCompression(zipUri: Uri) {
+        if (selectedBulkPdfs.isEmpty()) return
+        bulkButton.isEnabled = false
+        compressButton.isEnabled = false
+        progress.visibility = View.VISIBLE
+        openBulkZipButton.visibility = View.GONE
+        shareBulkZipButton.visibility = View.GONE
+        statusLabel.text = "Preparing bulk compression…"
+
+        val inputs = selectedBulkPdfs.toList()
+        val mode = pendingMode
+        val targetKb = pendingTargetKb
+        executor.execute {
+            var completed = 0
+            val failed = ArrayList<String>()
+            val usedNames = HashSet<String>()
+            try {
+                val outputStream = contentResolver.openOutputStream(zipUri, "w")
+                    ?: error("Could not create the ZIP file")
+                ZipOutputStream(outputStream.buffered()).use { zip ->
+                    inputs.forEachIndexed { index, inputUri ->
+                        val originalName = queryDisplayName(inputUri)
+                        val safeOriginal = originalName.substringAfterLast('/').ifBlank { "document_${index + 1}.pdf" }
+                        val inputFile = File(cacheDir, "keri_bulk_in_${System.currentTimeMillis()}_$index.pdf")
+                        var resultFile: File? = null
+                        try {
+                            contentResolver.openInputStream(inputUri)?.use { input ->
+                                inputFile.outputStream().use { output -> input.copyTo(output) }
+                            } ?: error("Could not read $safeOriginal")
+                            val result = compressPdf(inputFile, mode, targetKb)
+                            resultFile = result.file
+                            val maxBytes = if (mode == 1) (targetKb ?: 0).toLong() * 1024L else Long.MAX_VALUE
+                            if (mode == 1 && result.bytes > maxBytes) {
+                                failed.add("$safeOriginal (target not achievable)")
+                            } else {
+                                val prefixed = if (safeOriginal.startsWith("KeRi", ignoreCase = true)) safeOriginal else "KeRi$safeOriginal"
+                                val entryName = uniqueZipName(prefixed, usedNames)
+                                zip.putNextEntry(ZipEntry(entryName))
+                                result.file.inputStream().buffered().use { it.copyTo(zip) }
+                                zip.closeEntry()
+                                completed++
+                            }
+                        } catch (fileError: Exception) {
+                            failed.add("$safeOriginal (${fileError.localizedMessage ?: "compression failed"})")
+                        } finally {
+                            resultFile?.delete()
+                            inputFile.delete()
+                        }
+                        val done = index + 1
+                        runOnUiThread { statusLabel.text = "Bulk compression: $done / ${inputs.size} processed…" }
+                    }
+                    if (completed == 0) error("No PDF could be compressed within the requested settings")
+                }
+                lastSavedBulkZip = zipUri
+                runOnUiThread {
+                    progress.visibility = View.GONE
+                    compressButton.isEnabled = selectedPdf != null
+                    bulkButton.isEnabled = true
+                    openBulkZipButton.visibility = View.VISIBLE
+                    shareBulkZipButton.visibility = View.VISIBLE
+                    val summary = "Bulk ZIP saved\nPDFs added: $completed / ${inputs.size}" +
+                        if (failed.isNotEmpty()) "\nSkipped: ${failed.size}\n" + failed.take(8).joinToString("\n") else ""
+                    statusLabel.text = summary
+                    Toast.makeText(this, "Bulk ZIP created successfully", Toast.LENGTH_LONG).show()
+                }
+            } catch (error: Exception) {
+                try { android.provider.DocumentsContract.deleteDocument(contentResolver, zipUri) } catch (_: Exception) { }
+                runOnUiThread {
+                    progress.visibility = View.GONE
+                    compressButton.isEnabled = selectedPdf != null
+                    bulkButton.isEnabled = true
+                    statusLabel.text = "Bulk compression failed: " + (error.localizedMessage ?: "Unknown error")
+                }
+            }
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        var name = "document.pdf"
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) name = cursor.getString(index) ?: name
+            }
+        }
+        return name
+    }
+
+    private fun uniqueZipName(name: String, used: MutableSet<String>): String {
+        if (used.add(name)) return name
+        val dot = name.lastIndexOf('.')
+        val base = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var index = 2
+        while (true) {
+            val candidate = "$base ($index)$ext"
+            if (used.add(candidate)) return candidate
+            index++
+        }
+    }
+
+    private fun openLastBulkZip() {
+        val uri = lastSavedBulkZip ?: return
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/zip")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try { startActivity(Intent.createChooser(intent, "Open bulk ZIP")) }
+        catch (_: Exception) { shareLastBulkZip() }
+    }
+
+    private fun shareLastBulkZip() {
+        val uri = lastSavedBulkZip ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = android.content.ClipData.newUri(contentResolver, "KeRi bulk ZIP", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try { startActivity(Intent.createChooser(intent, "Share bulk ZIP")) }
+        catch (_: Exception) { Toast.makeText(this, "Could not open sharing menu", Toast.LENGTH_LONG).show() }
     }
 
     private fun startCompression(outputUri: Uri) {
@@ -634,5 +831,8 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_OPEN = 1001
         private const val REQUEST_SAVE = 1002
+        private const val REQUEST_BULK_OPEN = 1003
+        private const val REQUEST_BULK_SAVE = 1004
+        private const val MAX_BULK_FILES = 50
     }
 }
