@@ -2,10 +2,15 @@
 
 Offline-first Android PDF compression. Files are processed locally on the device.
 
+## Version 1.4.1
+- Fixed bulk mode so entering a valid KB target automatically activates strict per-file target mode, even if the quality-preserving radio option was left selected.
+- Bulk mode checks the actual generated PDF file length and the compression result before writing it to the ZIP; oversized files are skipped and reported.
+- The 1 KB safety margin is applied to each PDF individually. The combined ZIP is not constrained to the target KB.
+
 ## Version 1.4.0
 - Added bulk PDF compression for up to 50 selected PDFs in one operation.
 - Bulk results are delivered as one ZIP archive, with each PDF filename prefixed by `KeRi` while retaining its original filename.
-- The selected compression mode is applied to every PDF. In Exact target mode, the KB limit applies independently to each PDF, not to the combined ZIP archive.
+- When a valid KB target is entered, bulk mode automatically applies strict target mode to every PDF, independent of the radio selection. The KB limit applies independently to each PDF, not to the combined ZIP archive.
 - A PDF that cannot meet its individual target is skipped and reported; an oversized PDF is never added to the ZIP.
 - Added Open bulk ZIP and Share bulk ZIP actions.
 - Single-file output now also starts with `KeRi` followed by the original filename.
