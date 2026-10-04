@@ -237,10 +237,12 @@ class MainActivity : Activity() {
                     .setMessage("Keri PDF will optimize the document and save a separate copy. Your original file will not be changed. Continue?")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Continue") { _, _ ->
+                        val originalName = selectedPdf?.let { queryDisplayName(it) } ?: "document.pdf"
+                        val outputName = if (originalName.startsWith("KeRi", ignoreCase = true)) originalName else "KeRi$originalName"
                         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
                             type = "application/pdf"
-                            putExtra(Intent.EXTRA_TITLE, "KeRiPDF_compressed.pdf")
+                            putExtra(Intent.EXTRA_TITLE, outputName)
                         }
                         startActivityForResult(intent, REQUEST_SAVE)
                     }
@@ -370,21 +372,22 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
+        val uri = data?.data
         if (requestCode == REQUEST_OPEN) {
-            selectedPdf = uri
+            val selected = uri ?: return
+            selectedPdf = selected
             fileLabel.text = "Selected PDF: " + (uri.lastPathSegment ?: "document.pdf")
             statusLabel.text = "Ready to compress"
             compressButton.isEnabled = true
         } else if (requestCode == REQUEST_SAVE) {
-            startCompression(uri)
+            startCompression(uri ?: return)
         } else if (requestCode == REQUEST_BULK_OPEN) {
             val picked = ArrayList<Uri>()
             val clip = data.clipData
             if (clip != null) {
                 for (i in 0 until clip.itemCount) picked.add(clip.getItemAt(i).uri)
             } else {
-                picked.add(uri)
+                uri?.let { picked.add(it) }
             }
             if (picked.isEmpty() || picked.size > MAX_BULK_FILES) {
                 Toast.makeText(this, "Select between 1 and 50 PDF files", Toast.LENGTH_LONG).show()
@@ -411,7 +414,7 @@ class MainActivity : Activity() {
                 }
                 .show()
         } else if (requestCode == REQUEST_BULK_SAVE) {
-            startBulkCompression(uri)
+            startBulkCompression(uri ?: return)
         }
     }
 
